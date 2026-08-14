@@ -35,3 +35,23 @@ npm run serve
 ```
 
 Abra `http://localhost:4173`.
+
+## Firebase Hosting
+
+Projeto Firebase configurado:
+
+- Nome: `FechaPrint`
+- Project ID: `fechaprint`
+- Project number: `377821212918`
+
+O repositório já contém `firebase.json` e `.firebaserc` apontando para o projeto correto.
+
+Para publicar a partir de uma máquina autenticada no Firebase CLI:
+
+```bash
+npm install
+npx firebase login
+npx firebase deploy --only hosting
+```
+
+O deploy deve ser feito somente após o Firebase Hosting estar habilitado para o projeto e a conta autenticada possuir permissão de publicação.
