@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#f5f6f8" />
+  <title>FechaPrint AI — imagem para PDF de impressão</title>
+  <meta name="description" content="Prepare imagens para impressão com medidas físicas, PPI, sangria, enquadramento e PDF de produção." />
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark">F</div>
+      <div><strong>FechaPrint AI</strong><span>Preparação de arquivo para impressão</span></div>
+    </div>
+    <div class="privacy-pill">Processamento local · arquivo não é enviado</div>
+  </header>
+
+  <main class="app-shell">
+    <section class="panel settings-panel" aria-label="Configurações">
+      <div class="step-kicker">1. Envie</div>
+      <div id="dropzone" class="dropzone" role="button" tabindex="0">
+        <input id="fileInput" type="file" accept="image/jpeg,image/png,image/webp" hidden />
+        <div class="upload-icon">↥</div>
+        <strong>Arraste sua imagem aqui</strong>
+        <span>ou <u>Selecionar imagem</u></span>
+        <small>JPG, JPEG, PNG ou WEBP</small>
+      </div>
+      <div id="fileCard" class="file-card" hidden>
+        <img id="filePreview" alt="Preview do arquivo enviado" />
+        <div><strong id="fileName"></strong><span id="fileMeta"></span></div>
+      </div>
+
+      <div class="section-divider"></div>
+      <div class="step-kicker">2. Defina o tamanho</div>
+      <div class="field-grid two">
+        <label>Largura<input id="width" type="number" min="0.1" step="0.1" value="250" /></label>
+        <label>Altura<input id="height" type="number" min="0.1" step="0.1" value="75" /></label>
+      </div>
+      <label>Unidade<select id="unit"><option value="mm">mm</option><option value="cm" selected>cm</option><option value="m">metros</option></select></label>
+
+      <label>Material<select id="material"></select></label>
+      <label>Resolução DPI/PPI
+        <select id="ppi">
+          <option value="auto" selected>Automático</option>
+          <option value="300">300 PPI</option><option value="200">200 PPI</option><option value="150">150 PPI</option>
+          <option value="100">100 PPI</option><option value="72">72 PPI</option><option value="custom">Personalizado</option>
+        </select>
+      </label>
+      <label id="customPpiWrap" hidden>PPI personalizado<input id="customPpi" type="number" min="1" max="1200" value="150" /></label>
+
+      <label>Sangria
+        <select id="bleed">
+          <option value="0">Sem sangria</option><option value="2">2 mm</option><option value="3">3 mm</option>
+          <option value="5" selected>5 mm</option><option value="10">10 mm</option><option value="custom">Personalizada</option>
+        </select>
+      </label>
+      <label id="customBleedWrap" hidden>Sangria personalizada (mm)<input id="customBleed" type="number" min="0" step="0.5" value="5" /></label>
+
+      <fieldset class="fit-fieldset">
+        <legend>Ajuste da imagem</legend>
+        <button class="fit-option active" data-mode="fill" type="button"><strong>Preencher</strong><span>Ocupa tudo e recorta o excesso</span></button>
+        <button class="fit-option" data-mode="fit" type="button"><strong>Encaixar</strong><span>Preserva 100% da imagem</span></button>
+        <button class="fit-option disabled" data-mode="outpaint" type="button" aria-disabled="true"><strong>Expandir com IA <em>Provider</em></strong><span>Outpainting sem alterar o conteúdo original</span></button>
+      </fieldset>
+
+      <div id="fitBg" class="subpanel" hidden>
+        <label>Fundo do encaixe
+          <select id="bgMode"><option value="white">Branco</option><option value="black">Preto</option><option value="color">Cor personalizada</option><option value="blur">Desfocado da imagem</option></select>
+        </label>
+        <input id="bgColor" type="color" value="#ffffff" hidden aria-label="Cor de fundo" />
+      </div>
+
+      <div class="zoom-row">
+        <label>Zoom <input id="zoom" type="range" min="100" max="300" value="100" step="1" /></label>
+        <span id="zoomValue">100%</span>
+        <button id="resetPosition" class="text-button" type="button">Centralizar</button>
+      </div>
+
+      <button id="advancedToggle" class="advanced-toggle" type="button" aria-expanded="false">Configurações avançadas <span>⌄</span></button>
+      <div id="advanced" class="advanced" hidden>
+        <div class="capability"><strong>Aprimoramento / IA</strong><span id="aiStatus"></span><small>2×, 4×, automático e outpainting ficam disponíveis somente com provider real. O MVP não finge reconstrução de detalhes.</small></div>
+        <div class="capability"><strong>Gerenciamento de cor</strong><span id="cmykStatus"></span></div>
+        <div class="capability"><strong>PDF/X-4</strong><span>Não certificado neste runtime. A saída é identificada como PDF de produção.</span></div>
+      </div>
+    </section>
+
+    <section class="workspace" aria-label="Preview">
+      <div class="workspace-head">
+        <div><div class="step-kicker">3. Confira</div><h1>Pré-visualização</h1></div>
+        <div class="format-badges"><span id="orientation">—</span><span id="ratio">—</span></div>
+      </div>
+      <div class="preview-wrap">
+        <canvas id="previewCanvas"></canvas>
+        <div id="emptyPreview" class="empty-preview"><div>Envie uma imagem para visualizar o enquadramento.</div><small>A linha preta representa o corte. A linha vermelha indica a sangria.</small></div>
+      </div>
+      <div class="preview-note">Arraste a imagem para reposicionar. O zoom mantém a proporção e nunca deforma o arquivo.</div>
+    </section>
+
+    <aside class="panel diagnosis-panel" aria-label="Diagnóstico">
+      <div class="step-kicker">Diagnóstico</div>
+      <div class="metrics">
+        <div><span>Arquivo original</span><strong id="originalPx">—</strong></div>
+        <div><span>Necessário para impressão</span><strong id="requiredPx">—</strong></div>
+        <div><span>Resolução efetiva da fonte</span><strong id="effectivePpi">—</strong></div>
+        <div><span>Resolução alvo</span><strong id="targetPpi">—</strong></div>
+      </div>
+
+      <div id="qualityCard" class="quality-card" data-level="neutral">
+        <span class="quality-dot"></span><div><strong id="qualityLabel">Aguardando</strong><span id="qualityDescription">Defina a configuração de impressão.</span></div>
+      </div>
+
+      <div class="section-title">Alertas de produção</div>
+      <div id="alerts" class="alerts"></div>
+
+      <div class="section-title">Arquivo para impressão</div>
+      <dl class="summary-list">
+        <div><dt>Tamanho final</dt><dd id="finalSize">—</dd></div>
+        <div><dt>Com sangria</dt><dd id="bleedSize">—</dd></div>
+        <div><dt>Material</dt><dd id="materialOut">—</dd></div>
+        <div><dt>Enquadramento</dt><dd id="modeOut">—</dd></div>
+        <div><dt>Sangria</dt><dd id="bleedOut">—</dd></div>
+        <div><dt>Cor</dt><dd id="colorOut">RGB / DeviceRGB</dd></div>
+        <div><dt>Memória estimada</dt><dd id="memoryOut">—</dd></div>
+      </dl>
+
+      <div class="production-note"><strong>Cor e PDF/X</strong><span>Esta versão gera PDF RGB real com dimensões físicas e boxes de produção. Não declara CMYK nem PDF/X sem conversão e validação certificadas.</span></div>
+
+      <div class="step-kicker download-step">4. Baixe</div>
+      <button id="generate" class="primary-button" type="button" disabled>GERAR ARQUIVO PARA IMPRESSÃO</button>
+      <div id="progress" class="progress" hidden></div>
+      <div id="result" class="result" hidden>
+        <div class="ready">✓ Arquivo pronto</div>
+        <div id="resultMeta" class="result-meta"></div>
+        <a id="download" class="download-button" href="#">BAIXAR PDF</a>
+      </div>
+      <p class="privacy-copy">O arquivo é processado temporariamente no seu navegador. Nada é enviado ou mantido em servidor por esta versão.</p>
+    </aside>
+  </main>
+  <script type="module" src="./src/app.js"></script>
+</body>
+</html>
