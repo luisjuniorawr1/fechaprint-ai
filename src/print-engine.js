@@ -90,7 +90,9 @@ export function effectivePpi(imageWidthPx, imageHeightPx, trimWidthCm, trimHeigh
   const srcRatio = imageWidthPx / imageHeightPx;
   const dstRatio = trimWidthCm / trimHeightCm;
 
+  // "fit" encosta a dimensão limitante e deixa margem na outra.
   if (fitMode === 'fit') return srcRatio > dstRatio ? ppiX : ppiY;
+  // "fill" encosta a dimensão oposta e recorta o excesso.
   return srcRatio > dstRatio ? ppiY : ppiX;
 }
 
