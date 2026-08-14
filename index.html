@@ -1,78 +1,13 @@
-<!doctype html>
-<html lang="pt-BR">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>FechaPrint AI — arte pronta para impressão</title>
-  <meta name="description" content="Envie a arte, informe o tamanho e receba o PDF pronto para impressão usando um pipeline open-source." />
-  <link rel="stylesheet" href="./styles.css" />
-</head>
-<body>
-  <header class="topbar">
-    <div class="brand"><div class="brand-mark">F</div><div><strong>FechaPrint AI</strong><span>Pipeline open-source para impressão</span></div></div>
-    <div id="backendState" class="status-pill" data-state="checking">Verificando motores…</div>
-  </header>
-
-  <main class="layout">
-    <section class="panel main-panel">
-      <div class="eyebrow">Fluxo direto</div>
-      <h1>Envie a arte. Informe o tamanho. Baixe o PDF.</h1>
-      <p class="lead">O FechaPrint escolhe automaticamente restauração, upscale e adaptação de proporção conforme os motores gratuitos disponíveis no servidor.</p>
-
-      <div id="dropzone" class="dropzone" tabindex="0" role="button">
-        <input id="fileInput" type="file" accept="image/jpeg,image/png,image/webp" hidden />
-        <div class="upload-icon">↥</div>
-        <strong>Arraste JPG, PNG ou WEBP</strong>
-        <span>ou clique para selecionar</span>
-      </div>
-
-      <div id="fileCard" class="file-card" hidden>
-        <img id="filePreview" alt="Arte enviada" />
-        <div><strong id="fileName">—</strong><span id="fileMeta">—</span></div>
-      </div>
-
-      <div class="form-grid">
-        <label><span>Largura</span><input id="width" type="number" min="1" step="0.1" value="500" /></label>
-        <label><span>Altura</span><input id="height" type="number" min="1" step="0.1" value="200" /></label>
-        <label><span>Unidade</span><select id="unit"><option value="cm">cm</option><option value="m">m</option><option value="mm">mm</option></select></label>
-        <label><span>Material</span><select id="material"><option value="canvas">Lona</option><option value="banner">Banner</option><option value="panel">Painel</option><option value="outdoor">Outdoor</option><option value="sticker">Adesivo</option><option value="paper">Papel / flyer</option></select></label>
-      </div>
-
-      <details class="advanced">
-        <summary>Modo de adaptação</summary>
-        <select id="mode"><option value="auto">Automático</option><option value="relayout">Priorizar reformulação avançada</option><option value="safe">Priorizar preservação máxima</option></select>
-        <p>Automático usa reformulação apenas quando a proporção muda bastante e existe um motor compatível.</p>
-      </details>
-
-      <button id="process" class="primary" type="button" disabled>Processar e gerar PDF</button>
-      <div id="progress" class="progress" hidden><div class="spinner"></div><span>Processando…</span></div>
-    </section>
-
-    <aside class="sidebar">
-      <section class="panel preview-panel">
-        <div class="panel-title"><div><div class="eyebrow">Preview</div><h2>Arte enviada</h2></div></div>
-        <div class="preview-box"><img id="largePreview" alt="Preview" hidden /><div id="emptyPreview">Envie uma arte para começar.</div></div>
-      </section>
-
-      <section class="panel engines-panel">
-        <div class="panel-title"><div><div class="eyebrow">Motores</div><h2>Pipeline disponível</h2></div></div>
-        <div id="engines" class="engine-list"><div class="engine skeleton">Consultando backend…</div></div>
-      </section>
-
-      <section id="resultPanel" class="panel result-panel" hidden>
-        <div class="success">✓ Arquivo pronto</div>
-        <div id="resultSummary" class="result-summary"></div>
-        <div id="steps" class="steps"></div>
-        <div class="download-grid">
-          <a id="downloadPdf" class="primary link-button" href="#">Baixar PDF</a>
-          <a id="downloadImage" class="secondary link-button" href="#">Baixar JPG final</a>
-        </div>
-      </section>
-
-      <section id="errorPanel" class="panel error-panel" hidden></section>
-    </aside>
-  </main>
-
-  <script type="module" src="./src/app.js"></script>
-</body>
-</html>
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>FechaPrint AI</title><style>
+:root{font-family:Inter,system-ui,sans-serif;color:#111827;background:#f3f6fb}*{box-sizing:border-box}body{margin:0}.top{padding:18px 26px;background:white;border-bottom:1px solid #e5e7eb;display:flex;justify-content:space-between;align-items:center}.brand{font-weight:800;font-size:20px}.pill{padding:8px 12px;border-radius:999px;background:#edf4ff;color:#2456d6;font-size:13px;font-weight:700}.wrap{max-width:1250px;margin:24px auto;padding:0 18px;display:grid;grid-template-columns:1.25fr .75fr;gap:22px}.card{background:white;border:1px solid #e5e7eb;border-radius:20px;padding:24px;box-shadow:0 16px 40px #1f29370f}h1{font-size:30px;margin:0 0 8px}.lead{color:#64748b;margin:0 0 20px}.drop{border:2px dashed #b8c7ee;border-radius:18px;padding:30px;text-align:center;cursor:pointer;background:#f8faff}.drop b{display:block;font-size:17px;margin-bottom:6px}.file{display:flex;gap:12px;align-items:center;margin-top:14px;padding:10px;border:1px solid #e5e7eb;border-radius:14px}.file img{width:70px;height:70px;object-fit:cover;border-radius:10px}.file span{display:block;color:#64748b;font-size:13px}.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:18px}label b{display:block;font-size:13px;margin-bottom:7px}input,select{width:100%;padding:12px;border:1px solid #d9e0eb;border-radius:12px;background:white}.actions{margin-top:18px}.btn{border:0;border-radius:12px;background:#315ff4;color:white;font-weight:800;padding:14px 20px;cursor:pointer}.btn:disabled{opacity:.55;cursor:not-allowed}.prog{margin-top:14px;color:#53627b;font-weight:600}.preview{min-height:320px;background:#eef2f7;border-radius:16px;display:grid;place-items:center;overflow:hidden}.preview img{max-width:100%;max-height:520px}.muted{color:#64748b}.eng{margin-top:14px;padding:13px;border:1px solid #dce4f0;border-radius:14px}.eng strong{display:block}.eng span{font-size:13px;color:#64748b}.result{margin-top:18px;border-top:1px solid #e5e7eb;padding-top:18px}.ok{color:#14804a;font-weight:800}.links{display:flex;gap:10px;margin-top:12px;flex-wrap:wrap}.links a{text-decoration:none}.secondary{background:#eef2ff;color:#315ff4}.step{font-size:13px;margin-top:7px;color:#475569}.error{margin-top:14px;padding:12px;border-radius:12px;background:#fff1f2;color:#b42318} [hidden]{display:none!important}@media(max-width:850px){.wrap{grid-template-columns:1fr}.grid{grid-template-columns:1fr 1fr}}
+</style></head><body><header class="top"><div class="brand">FechaPrint AI</div><div class="pill">Processamento local rápido</div></header><main class="wrap"><section class="card"><h1>Envie a arte. Informe o tamanho. Baixe o PDF.</h1><p class="lead">Sem servidor e sem fila: o arquivo é processado no seu próprio navegador.</p><div id="drop" class="drop"><input id="file" type="file" accept="image/jpeg,image/png,image/webp" hidden><b>Arraste ou clique para enviar</b><span class="muted">JPG, PNG ou WEBP</span></div><div id="filecard" class="file" hidden><img id="thumb"><div><strong id="fname"></strong><span id="fmeta"></span></div></div><div class="grid"><label><b>Largura</b><input id="w" type="number" value="90" min="1" step="0.1"></label><label><b>Altura</b><input id="h" type="number" value="120" min="1" step="0.1"></label><label><b>Unidade</b><select id="unit"><option value="cm">cm</option><option value="m">m</option><option value="mm">mm</option></select></label><label><b>Material</b><select id="mat"><option value="canvas">Lona</option><option value="banner">Banner</option><option value="panel">Painel</option><option value="outdoor">Outdoor</option><option value="sticker">Adesivo</option><option value="paper">Papel</option></select></label></div><div class="grid" style="grid-template-columns:1fr"><label><b>Adaptação</b><select id="mode"><option value="auto">Automático</option><option value="safe">Preservar a arte inteira</option><option value="fill">Preencher sem deformar (pode recortar)</option></select></label></div><div class="actions"><button id="go" class="btn" disabled>Processar e gerar PDF</button><div id="prog" class="prog" hidden>Preparando…</div><div id="err" class="error" hidden></div></div><div id="result" class="result" hidden><div class="ok">✓ Arquivo pronto</div><div id="summary" class="step"></div><div id="steps"></div><div class="links"><a id="pdf" class="btn" download>Baixar PDF</a><a id="jpg" class="btn secondary" download>Baixar JPG final</a></div></div></section><aside class="card"><h2 style="margin-top:0">Preview</h2><div class="preview"><span id="empty" class="muted">Envie uma arte para começar.</span><img id="preview" hidden></div><div class="eng"><strong>Pica / Web Workers</strong><span>Resize local rápido com fallback automático para Canvas.</span></div><div class="eng"><strong>Print Engine</strong><span>PDF no tamanho físico com MediaBox, TrimBox e BleedBox.</span></div><div class="eng"><strong>Proteção contra travamento</strong><span>Se o redimensionador demorar demais, o sistema troca automaticamente de método.</span></div></aside></main>
+<script src="https://cdn.jsdelivr.net/npm/pica@10.0.2/dist/pica.min.js"></script><script>
+const $=s=>document.querySelector(s),E={drop:$('#drop'),file:$('#file'),card:$('#filecard'),thumb:$('#thumb'),name:$('#fname'),meta:$('#fmeta'),w:$('#w'),h:$('#h'),unit:$('#unit'),mat:$('#mat'),mode:$('#mode'),go:$('#go'),prog:$('#prog'),err:$('#err'),result:$('#result'),summary:$('#summary'),steps:$('#steps'),pdf:$('#pdf'),jpg:$('#jpg'),preview:$('#preview'),empty:$('#empty')};let F=null,U=null,P=null,J=null,PI=null;const M={canvas:['Lona',120,5],banner:['Banner',120,5],panel:['Painel',100,5],outdoor:['Outdoor',72,0],sticker:['Adesivo',180,3],paper:['Papel',240,3]};
+E.drop.onclick=()=>E.file.click();E.file.onchange=e=>setFile(e.target.files[0]);E.drop.ondragover=e=>e.preventDefault();E.drop.ondrop=e=>{e.preventDefault();setFile(e.dataTransfer.files[0])};function setFile(f){if(!f)return;if(!/^image\/(jpeg|png|webp)$/.test(f.type))return fail('Use JPG, PNG ou WEBP.');F=f;if(U)URL.revokeObjectURL(U);U=URL.createObjectURL(f);E.thumb.src=E.preview.src=U;E.preview.hidden=false;E.empty.hidden=true;E.name.textContent=f.name;E.meta.textContent=(f.size/1024/1024).toFixed(2)+' MB';E.card.hidden=false;E.go.disabled=false;E.result.hidden=true;E.err.hidden=true}
+E.go.onclick=async()=>{if(!F)return;busy('Lendo a imagem…');E.result.hidden=true;E.err.hidden=true;try{await paint();const img=await load(U,12000),wc=cm(+E.w.value,E.unit.value),hc=cm(+E.h.value,E.unit.value);if(!(wc>0&&hc>0))throw Error('Informe largura e altura válidas.');let [label,ppi,bleed]=M[E.mat.value]||M.canvas,max=Math.max(wc,hc);if(['canvas','banner'].includes(E.mat.value)){if(max>=500)ppi=60;else if(max>=300)ppi=72;else if(max>=200)ppi=100}if(E.mat.value==='outdoor')ppi=max>=500?36:max>=300?48:72;if(E.mat.value==='panel'&&max>=300)ppi=72;let tw=wc+bleed/5,th=hc+bleed/5,s=safe(tw,th,ppi),tr=wc/hc,sr=img.naturalWidth/img.naturalHeight,d=Math.abs(sr/tr-1),pres=E.mode.value==='safe'||(E.mode.value==='auto'&&d>.12);busy('Redimensionando a arte…');await paint();let canvas=await compose(img,s.w,s.h,pres);busy('Gerando JPG…');await paint();let blob=await blobOf(canvas),bytes=new Uint8Array(await blob.arrayBuffer());busy('Gerando PDF…');await paint();let pdf=makePdf(bytes,canvas.width,canvas.height,wc,hc,bleed);if(P)URL.revokeObjectURL(P);if(J)URL.revokeObjectURL(J);P=URL.createObjectURL(new Blob([pdf],{type:'application/pdf'}));J=URL.createObjectURL(blob);let actual=Math.round(Math.min(canvas.width/(tw/2.54),canvas.height/(th/2.54)));E.pdf.href=P;E.jpg.href=J;E.pdf.download=`fechaprint_${wc}x${hc}cm.pdf`;E.jpg.download=`fechaprint_${wc}x${hc}cm.jpg`;E.summary.textContent=`${fmt(wc)} × ${fmt(hc)} cm · ${label} · ~${actual} PPI · sangria ${bleed} mm`;E.steps.innerHTML=`<div class="step">Raster final: ${canvas.width} × ${canvas.height} px.</div><div class="step">${pres?'Arte inteira preservada, sem deformação.':'Formato preenchido sem esticar a imagem.'}</div>${s.ppi<ppi?`<div class="step">Resolução limitada a ~${Math.round(s.ppi)} PPI para respeitar a memória do navegador.</div>`:''}<div class="step">Este modo prioriza estabilidade; super-resolução generativa pesada exige GPU dedicada.</div>`;E.result.hidden=false;E.preview.src=J}catch(e){fail(e.message||String(e))}finally{done()}};
+function cm(v,u){return u==='m'?v*100:u==='mm'?v/10:v}function safe(wc,hc,ppi){let rw=Math.round(wc/2.54*ppi),rh=Math.round(hc/2.54*ppi),sc=Math.min(1,6500/rw,6500/rh,Math.sqrt(22000000/(rw*rh)));return{w:Math.max(1,Math.round(rw*sc)),h:Math.max(1,Math.round(rh*sc)),ppi:ppi*sc}}
+async function compose(img,w,h,pres){let c=document.createElement('canvas');c.width=w;c.height=h;let x=c.getContext('2d',{alpha:false});x.fillStyle='white';x.fillRect(0,0,w,h);if(pres){let bg=cover(img.naturalWidth,img.naturalHeight,w,h);x.save();x.filter=`blur(${Math.max(12,Math.round(Math.min(w,h)*.018))}px)`;x.globalAlpha=.78;x.drawImage(img,bg.x,bg.y,bg.w,bg.h);x.restore();x.fillStyle='rgba(255,255,255,.16)';x.fillRect(0,0,w,h);let r=contain(img.naturalWidth,img.naturalHeight,w,h),q=await resize(img,Math.round(r.w),Math.round(r.h));x.drawImage(q,r.x,r.y)}else{let r=cover(img.naturalWidth,img.naturalHeight,w,h),q=await resize(img,Math.round(r.w),Math.round(r.h));x.drawImage(q,r.x,r.y)}return c}
+async function resize(img,w,h){let c=document.createElement('canvas');c.width=w;c.height=h;if(window.pica){try{PI||=(window.pica)({tile:1024});let cancel=new Promise((_,rej)=>setTimeout(()=>rej(Error('timeout')),30000));await PI.resize(img,c,{filter:'mks2013',cancelToken:cancel});return c}catch(e){console.warn('Pica fallback',e)}}let x=c.getContext('2d',{alpha:false});x.imageSmoothingEnabled=true;x.imageSmoothingQuality='high';x.drawImage(img,0,0,w,h);return c}function cover(sw,sh,dw,dh){let s=Math.max(dw/sw,dh/sh),w=sw*s,h=sh*s;return{x:(dw-w)/2,y:(dh-h)/2,w,h}}function contain(sw,sh,dw,dh){let s=Math.min(dw/sw,dh/sh),w=sw*s,h=sh*s;return{x:(dw-w)/2,y:(dh-h)/2,w,h}}
+function load(src,ms){return new Promise((res,rej)=>{let i=new Image,t=setTimeout(()=>rej(Error('A imagem demorou demais para carregar.')),ms);i.onload=()=>{clearTimeout(t);res(i)};i.onerror=()=>{clearTimeout(t);rej(Error('Não foi possível carregar a imagem.'))};i.src=src})}function blobOf(c){return new Promise((res,rej)=>c.toBlob(b=>b?res(b):rej(Error('Falha ao gerar JPG.')),'image/jpeg',.95))}function paint(){return new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))}function busy(t){E.go.disabled=true;E.prog.hidden=false;E.prog.textContent=t}function done(){E.go.disabled=!F;E.prog.hidden=true}function fail(t){E.err.textContent=t;E.err.hidden=false;done()}function fmt(v){return new Intl.NumberFormat('pt-BR',{maximumFractionDigits:2}).format(v)}
+const enc=new TextEncoder(),A=s=>enc.encode(s),cat=a=>{let n=a.reduce((s,x)=>s+x.length,0),o=new Uint8Array(n),p=0;for(let x of a){o.set(x,p);p+=x.length}return o},num=n=>Number(n).toFixed(4).replace(/0+$/,'').replace(/\.$/,'');function makePdf(jpg,iw,ih,wc,hc,bm){let bc=bm/10,pt=c=>c/2.54*72,m=[0,0,pt(wc+2*bc),pt(hc+2*bc)],t=[pt(bc),pt(bc),pt(bc+wc),pt(bc+hc)],pw=m[2],ph=m[3],o=[];o[1]=A('<< /Type /Catalog /Pages 2 0 R >>');o[2]=A('<< /Type /Pages /Kids [3 0 R] /Count 1 >>');o[3]=A(`<< /Type /Page /Parent 2 0 R /MediaBox [${m.map(num).join(' ')}] /TrimBox [${t.map(num).join(' ')}] /BleedBox [${m.map(num).join(' ')}] /Resources << /XObject << /Im0 4 0 R >> >> /Contents 5 0 R >>`);o[4]=cat([A(`<< /Type /XObject /Subtype /Image /Width ${iw} /Height ${ih} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${jpg.length} >>\nstream\n`),jpg,A('\nendstream')]);let st=`q\n${num(pw)} 0 0 ${num(ph)} 0 0 cm\n/Im0 Do\nQ\n`;o[5]=A(`<< /Length ${A(st).length} >>\nstream\n${st}endstream`);let hd=new Uint8Array([37,80,68,70,45,49,46,55,10]),ch=[hd],off=[0],cur=hd.length;for(let i=1;i<=5;i++){off[i]=cur;let pre=A(`${i} 0 obj\n`),post=A('\nendobj\n');ch.push(pre,o[i],post);cur+=pre.length+o[i].length+post.length}let xo=cur,x='xref\n0 6\n0000000000 65535 f \n';for(let i=1;i<=5;i++)x+=String(off[i]).padStart(10,'0')+' 00000 n \n';ch.push(A(`${x}trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n${xo}\n%%EOF\n`));return cat(ch)}
+</script></body></html>
