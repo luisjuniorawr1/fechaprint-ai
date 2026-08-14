@@ -1,57 +1,63 @@
-# FechaPrint AI — MVP funcional
+# FechaPrint AI — pipeline open-source para impressão
 
-Aplicação web estática que prepara JPG/JPEG/PNG/WEBP para impressão e gera um PDF de produção diretamente no navegador.
+O FechaPrint recebe JPG/PNG/WEBP, tamanho físico e material, executa automaticamente o melhor pipeline gratuito disponível e gera JPG final + PDF com tamanho físico correto.
 
-## Implementado
+## Fluxo
 
-- Upload/drag-and-drop com leitura real de dimensões.
-- Conversões mm/cm/m e cálculo matemático de PPI/pixels necessários.
-- Presets de material com PPI sugerido e PPI manual.
-- Diagnóstico de resolução efetiva, qualidade e memória raster estimada.
-- Enquadramento sem distorção: Preencher (crop) e Encaixar (branco, preto, cor, fundo desfocado).
-- Pan/zoom no preview.
-- Sangria externa e linhas de corte.
-- PDF real com página no tamanho físico solicitado e `MediaBox`, `TrimBox`, `BleedBox`.
-- Saída RGB honesta; sem falso CMYK ou falso PDF/X.
-- Arquitetura desacoplada para `AIImageProvider` e gerenciamento de cor futuro.
-- Processamento local no browser, sem upload de arquivo ao servidor.
+**upload → tamanho/material → processamento automático → PDF**
 
-## Limites intencionais
+## Motores integrados
 
-- Outpainting/upscale por IA só é habilitado quando um provider real for configurado.
-- Conversão CMYK/ICC certificada e PDF/X-4 exigem pipeline externo/servidor apropriado.
-- Rasterização no navegador é bloqueada acima de limites conservadores de dimensão/memória para evitar crash.
+- **PaddleOCR** — registra e valida texto antes/depois (Apache-2.0).
+- **Real-ESRGAN** — upscale/restauração padrão (BSD-3-Clause).
+- **LaMa** — inpainting/outpainting conservador (Apache-2.0).
+- **PowerPaint** — outpainting avançado (MIT).
+- **SeedVR2** — restauração pesada (Apache-2.0).
+- **Qwen-Image-Edit-2511** — reformulação visual avançada (Apache-2.0).
+- **GFPGAN** — restauração facial opcional; fica desativado por padrão porque o projeto lista componentes de terceiros com licenças adicionais.
 
-## Testes
+Os pesos/modelos não são redistribuídos aqui. Instale os projetos oficiais no servidor GPU e configure os comandos em `.env`.
 
-```bash
-npm test
-```
+## Trava de texto
 
-## Rodar localmente
+PaddleOCR lê o original e a proposta gerativa. Se a similaridade cair abaixo de `FECHAPRINT_OCR_SIMILARITY` (0,84 por padrão), a edição é rejeitada e o pipeline volta para uma composição conservadora sem deformar a arte.
 
-```bash
-npm run serve
-```
+## API
 
-Abra `http://localhost:4173`.
+- `GET /api/health`
+- `GET /api/capabilities`
+- `POST /api/process` (`file`, `width`, `height`, `unit`, `material`, `mode`)
+- `GET /api/files/{job_id}/final.jpg`
+- `GET /api/files/{job_id}/final.pdf`
 
-## Firebase Hosting
-
-Projeto Firebase configurado:
-
-- Nome: `FechaPrint`
-- Project ID: `fechaprint`
-- Project number: `377821212918`
-
-O repositório já contém `firebase.json` e `.firebaserc` apontando para o projeto correto.
-
-Para publicar a partir de uma máquina autenticada no Firebase CLI:
+## Rodar
 
 ```bash
-npm install
-npx firebase login
-npx firebase deploy --only hosting
+pip install -r requirements.txt
+uvicorn backend.app:app --host 0.0.0.0 --port 8080
 ```
 
-O deploy deve ser feito somente após o Firebase Hosting estar habilitado para o projeto e a conta autenticada possuir permissão de publicação.
+Abra `http://localhost:8080`.
+
+## Docker
+
+```bash
+docker build -t fechaprint .
+docker run --rm -p 8080:8080 -v fechaprint-data:/data fechaprint
+```
+
+O container base serve frontend + orquestrador. Os modelos GPU devem ser instalados/montados no servidor e configurados pelas variáveis de `.env.example`.
+
+## Real-ESRGAN
+
+Se `realesrgan-ncnn-vulkan` estiver no `PATH`, o backend detecta automaticamente. Também é possível apontar o script oficial:
+
+```env
+FECHAPRINT_REALESRGAN_CMD=python /models/Real-ESRGAN/inference_realesrgan.py -n RealESRGAN_x4plus -i {input} -o {output_dir} --outscale {scale} --tile 512
+```
+
+## Testes locais
+
+```bash
+python -m unittest discover -s tests -v
+```
