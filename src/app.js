@@ -1,1 +1,115 @@
-import{getTargetPpi,printGeometry,effectivePpi,qualityStatus,orientation,formatRatio,estimateRasterMemory,autoUpscaleFactor,toCm}from'./print-engine.js';import{loadImageFile,renderComposition,compositionToJpegBlob}from'./image-engine.js';import{buildProductionPdf}from'./pdf-engine.js';import{aiProvider}from'./ai-provider.js';import{colorManagement}from'./color-management.js';import{getMaterialPreset,inferMaterialFromText,materialOptions,normalize}from'./knowledge-base.js';const $=s=>document.querySelector(s),els={dropzone:$('#dropzone'),fileInput:$('#fileInput'),fileCard:$('#fileCard'),filePreview:$('#filePreview'),fileName:$('#fileName'),fileMeta:$('#fileMeta'),chatLog:$('#chatLog'),quickReplies:$('#quickReplies'),chatForm:$('#chatForm'),chatInput:$('#chatInput'),canvas:$('#previewCanvas'),emptyPreview:$('#emptyPreview'),orientation:$('#orientation'),ratio:$('#ratio'),zoom:$('#zoom'),zoomValue:$('#zoomValue'),resetPosition:$('#resetPosition'),slotImage:$('#slotImage'),slotSize:$('#slotSize'),slotMaterial:$('#slotMaterial'),slotPpi:$('#slotPpi'),slotBleed:$('#slotBleed'),slotFit:$('#slotFit'),slotReady:$('#slotReady'),originalPx:$('#originalPx'),requiredPx:$('#requiredPx'),effectivePpi:$('#effectivePpi'),qualityText:$('#qualityText'),qualityCard:$('#qualityCard'),qualityLabel:$('#qualityLabel'),qualityDescription:$('#qualityDescription'),alerts:$('#alerts'),finalSize:$('#finalSize'),bleedSize:$('#bleedSize'),memoryOut:$('#memoryOut'),fileSummary:$('#fileSummary'),aiStatus:$('#aiStatus'),cmykStatus:$('#cmykStatus'),generate:$('#generate'),progress:$('#progress'),result:$('#result'),resultMeta:$('#resultMeta'),download:$('#download')};const state={file:null,imageInfo:null,imageUrl:null,objectUrl:null,slots:{width:null,height:null,unit:'cm',material:null,ppiMode:'auto',customPpi:null,bleedMm:null,fitMode:null,background:'white'},messages:[],panX:0,panY:0,lastComposition:null,lastDownloadUrl:null,generating:false,lastGeneratedSignature:''},MAX_W=1100,MAX_H=760,SOFT=350,HARD=512,EPS=.015;function boot(){bind();els.aiStatus.textContent=aiProvider.available?'IA disponível':'IA indisponível no momento';els.cmykStatus.textContent=colorManagement.cmykAvailable?'Conversão CMYK disponível':'CMYK/ICC indisponível neste runtime';assistant('Olá! Eu sou o **FechaPrint AI**.\n\nEnvie sua imagem e me diga o tamanho final ou o material. Exemplo: **"Quero isso em lona 250 x 75 cm"**.\n\nSe eu já tiver dados suficientes, fecho o arquivo e gero o PDF. Se faltar algo, eu te pergunto só o necessário.');quick(['Quero isso em lona 250 x 75 cm','Preciso de um banner 100 x 50 cm','Vou imprimir uma foto 20 x 30 cm']);refresh()}function bind(){els.dropzone.onclick=()=>els.fileInput.click();els.dropzone.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();els.fileInput.click()}};els.dropzone.ondragover=e=>{e.preventDefault();els.dropzone.classList.add('is-dragging')};els.dropzone.ondragleave=()=>els.dropzone.classList.remove('is-dragging');els.dropzone.ondrop=async e=>{e.preventDefault();els.dropzone.classList.remove('is-dragging');if(e.dataTransfer.files[0])await file(e.dataTransfer.files[0])};els.fileInput.onchange=async e=>{if(e.target.files[0])await file(e.target.files[0]);e.target.value=''};els.chatForm.onsubmit=async e=>{e.preventDefault();const t=els.chatInput.value.trim();if(!t)return;els.chatInput.value='';await message(t)};els.chatInput.onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();els.chatForm.requestSubmit()}};els.zoom.oninput=()=>{els.zoomValue.textContent=els.zoom.value+'%';refresh()};els.resetPosition.onclick=()=>{state.panX=state.panY=0;els.zoom.value=100;els.zoomValue.textContent='100%';refresh()};els.generate.onclick=()=>generate()}async function file(f){if(!['image/jpeg','image/png','image/webp'].includes(f.type)){assistant('Esse arquivo não parece ser JPG, PNG ou WEBP.');return}try{const i=await loadImageFile(f);if(state.objectUrl)URL.revokeObjectURL(state.objectUrl);state.file=f;state.imageInfo=i;state.imageUrl=state.objectUrl=i.url;state.panX=state.panY=0;state.lastGeneratedSignature='';els.fileCard.hidden=false;els.filePreview.src=i.url;els.fileName.textContent=f.name;els.fileMeta.textContent=`${i.width} × ${i.height} px · ${formatRatio(i.width,i.height)} · ${size(f.size)}`;assistant(`Recebi **${f.name}**. Ela tem **${i.width} × ${i.height} px**.\n\nAgora me diga o **tamanho final de impressão** ou o **material**.`);quick(['250 x 75 cm em lona','100 x 50 cm banner','30 x 20 cm fotografia']);refresh();await step()}catch(e){assistant(e.message)}}async function message(t){user(t);const p=parse(t);if(p.dim){Object.assign(state.slots,p.dim)}if(p.material)state.slots.material=p.material;if(p.bleed!==null)state.slots.bleedMm=p.bleed;if(p.ppi){state.slots.ppiMode='custom';state.slots.customPpi=p.ppi}if(p.fit)state.slots.fitMode=p.fit;defaults();refresh();await step()}function parse(t){const n=normalize(t),m=t.replace(/,/g,'.').match(/(\d+(?:\.\d+)?)\s*(mm|cm|m|metros?)?\s*(?:x|×|por)\s*(\d+(?:\.\d+)?)\s*(mm|cm|m|metros?)?/i);let dim=null;if(m){const unit=u(m[4]||m[2]||'cm');dim={width:+m[1],height:+m[3],unit}}const bm=n.match(/sangria\s*(?:de)?\s*(\d+(?:\.\d+)?)\s*mm/),pm=n.match(/(\d{2,4})\s*(?:ppi|dpi)/);let fit=null;if(/(pode cortar|pode recortar|preencher|crop|corta)/.test(n))fit='fill';else if(/(encaixar|manter inteira|mostrar tudo|sem cortar|nao cortar|borda|margem)/.test(n))fit='fit';else if(/(expand|outpaint|ia)/.test(n))fit='outpaint';return{dim,material:inferMaterialFromText(t),bleed:n.includes('sem sangria')?0:bm?+bm[1]:null,ppi:pm?+pm[1]:null,fit}}function u(x){x=(x||'').toLowerCase();return x==='mm'?'mm':x==='m'||x.startsWith('metro')?'m':'cm'}function defaults(){if(!state.slots.material)return;const p=getMaterialPreset(state.slots.material);if(!state.slots.customPpi)state.slots.customPpi=p.ppi;if(state.slots.bleedMm===null)state.slots.bleedMm=p.bleedMm;if(!needsFit()&&!state.slots.fitMode&&state.imageInfo&&state.slots.width)state.slots.fitMode='fill'}async function step(){defaults();if(!state.imageInfo){assistant('Primeiro eu preciso da **imagem**. Pode enviar o arquivo para eu analisar.');return}if(!state.slots.width){assistant('Qual é o **tamanho final de impressão**? Ex.: **250 x 75 cm**.');quick(['250 x 75 cm','100 x 50 cm','20 x 30 cm']);return}if(!state.slots.material){assistant('E isso vai ser impresso em **quê**? Lona, banner, fotografia, adesivo, painel ou outdoor?');quick(materialOptions().slice(0,6).map(x=>x.label));return}if(needsFit()&&!state.slots.fitMode){assistant('A proporção da imagem é diferente da proporção final. Para **não deformar**, escolha:\n\n- **Preencher**: ocupa tudo e recorta o excesso.\n- **Encaixar**: mantém 100% da imagem e completa com fundo.');quick(['Pode cortar / preencher','Quero encaixar / sem cortar']);return}if(state.slots.fitMode==='outpaint'&&!aiProvider.outpaintAvailable){assistant('A expansão com IA ainda não tem provider real ativo. Posso seguir com **Preencher** ou **Encaixar**.');state.slots.fitMode=null;quick(['Pode cortar / preencher','Quero encaixar / sem cortar']);return}if(ready()){const c=config(),q=quality();assistant(`Fechei a configuração: **${fmt(c.geometry.trimWidthCm)} × ${fmt(c.geometry.trimHeightCm)} cm** em **${getMaterialPreset(state.slots.material).label}**.\nResolução: **${c.targetPpi} PPI** · Sangria: **${state.slots.bleedMm} mm** · Enquadramento: **${fitLabel(state.slots.fitMode)}**.\nQualidade estimada: **${q.label}**.`);quick([]);if(signature()!==state.lastGeneratedSignature)await generate()}}function needsFit(){if(!state.imageInfo||!state.slots.width)return false;const a=state.imageInfo.width/state.imageInfo.height,b=toCm(state.slots.width,state.slots.unit)/toCm(state.slots.height,state.slots.unit);return Math.abs(a-b)>EPS}function config(){const targetPpi=getTargetPpi(state.slots.material,state.slots.ppiMode,state.slots.customPpi),geometry=printGeometry({width:state.slots.width,height:state.slots.height,unit:state.slots.unit,bleedMm:state.slots.bleedMm||0,ppi:targetPpi}),effective=state.imageInfo?effectivePpi(state.imageInfo.width,state.imageInfo.height,geometry.trimWidthCm,geometry.trimHeightCm,state.slots.fitMode||'fill')/(+els.zoom.value/100):0,memory=estimateRasterMemory(geometry.totalWidthPx,geometry.totalHeightPx);return{targetPpi,geometry,effective,memory}}function quality(){if(!state.imageInfo||!state.slots.material)return qualityStatus(0,0);const c=config();return qualityStatus(c.effective,c.targetPpi)}function ready(){if(!state.imageInfo||!state.slots.width||!state.slots.material)return false;const c=config();return Boolean((state.slots.fitMode||!needsFit())&&c.memory.mb<=HARD)}function signature(){return JSON.stringify({f:state.file?.name,w:state.slots.width,h:state.slots.height,u:state.slots.unit,m:state.slots.material,p:state.slots.customPpi,b:state.slots.bleedMm,fit:state.slots.fitMode,z:els.zoom.value})}async function generate(){if(!ready()||state.generating)return;state.generating=true;const c=config();els.progress.hidden=false;els.progress.textContent='Gerando PDF…';try{const blob=await compositionToJpegBlob({image:state.imageInfo.img,width:c.geometry.totalWidthPx,height:c.geometry.totalHeightPx,trimRect:{x:Math.round((c.geometry.totalWidthPx-c.geometry.trimWidthPx)/2),y:Math.round((c.geometry.totalHeightPx-c.geometry.trimHeightPx)/2),w:c.geometry.trimWidthPx,h:c.geometry.trimHeightPx},mode:state.slots.fitMode,zoom:+els.zoom.value/100,panX:state.panX,panY:state.panY,background:'white'}),jpg=new Uint8Array(await blob.arrayBuffer()),pdf=buildProductionPdf({jpegBytes:jpg,imageWidth:c.geometry.totalWidthPx,imageHeight:c.geometry.totalHeightPx,mediaBox:c.geometry.mediaBox,trimBox:c.geometry.trimBox,bleedBox:c.geometry.bleedBox,title:'FechaPrint AI'}),pb=new Blob([pdf],{type:'application/pdf'});if(state.lastDownloadUrl)URL.revokeObjectURL(state.lastDownloadUrl);state.lastDownloadUrl=URL.createObjectURL(pb);state.lastGeneratedSignature=signature();els.result.hidden=false;els.download.href=state.lastDownloadUrl;els.download.download=`impressao_${state.slots.width}x${state.slots.height}${state.slots.unit}_${c.targetPpi}ppi.pdf`;els.resultMeta.textContent=`${fmt(c.geometry.trimWidthCm)} × ${fmt(c.geometry.trimHeightCm)} cm · ${c.targetPpi} PPI · ${size(pb.size)}`;assistant('Arquivo pronto. O botão **Baixar PDF** está liberado.')}catch(e){assistant(e.message||'Falha ao gerar PDF.')}finally{state.generating=false;els.progress.hidden=true;refresh()}}function refresh(){summary();qualityView();alerts();preview();els.generate.disabled=!ready()||state.generating}function summary(){const c=state.slots.width&&state.slots.material?config():null;els.slotImage.textContent=state.file?.name||'Pendente';els.slotSize.textContent=state.slots.width?`${state.slots.width} × ${state.slots.height} ${state.slots.unit}`:'Pendente';els.slotMaterial.textContent=state.slots.material?getMaterialPreset(state.slots.material).label:'Pendente';els.slotPpi.textContent=state.slots.material?`${getTargetPpi(state.slots.material,state.slots.ppiMode,state.slots.customPpi)} PPI`:'Pendente';els.slotBleed.textContent=state.slots.bleedMm!==null?`${state.slots.bleedMm} mm`:'Pendente';els.slotFit.textContent=state.slots.fitMode?fitLabel(state.slots.fitMode):needsFit()?'Escolha necessária':'Pendente';els.slotReady.textContent=ready()?'Pronto para gerar':'Coletando dados';els.originalPx.textContent=state.imageInfo?`${state.imageInfo.width} × ${state.imageInfo.height} px`:'—';els.requiredPx.textContent=c?`${c.geometry.trimWidthPx} × ${c.geometry.trimHeightPx} px`:'—';els.effectivePpi.textContent=c?`${Math.round(c.effective)} PPI`:'—';els.qualityText.textContent=c?quality().label:'—';els.finalSize.textContent=c?`${fmt(c.geometry.trimWidthCm)} × ${fmt(c.geometry.trimHeightCm)} cm`:'—';els.bleedSize.textContent=c?`${fmt(c.geometry.totalWidthCm)} × ${fmt(c.geometry.totalHeightCm)} cm`:'—';els.memoryOut.textContent=c?`${c.memory.mb.toFixed(1)} MB`:'—';els.fileSummary.textContent=ready()?'PDF de produção pronto para exportar':'Aguardando fechamento técnico';els.orientation.textContent=c?orientation(c.geometry.trimWidthCm,c.geometry.trimHeightCm):state.imageInfo?orientation(state.imageInfo.width,state.imageInfo.height):'—';els.ratio.textContent=c?formatRatio(c.geometry.trimWidthCm,c.geometry.trimHeightCm):state.imageInfo?formatRatio(state.imageInfo.width,state.imageInfo.height):'—'}function qualityView(){const q=quality();els.qualityCard.dataset.level=q.level;els.qualityLabel.textContent=q.label;els.qualityDescription.textContent=q.description}function alerts(){els.alerts.innerHTML='';const a=[];if(!state.imageInfo)a.push('Envie uma imagem para começar a análise.');if(state.imageInfo&&state.slots.width&&state.slots.material){const c=config(),q=quality();if(needsFit()&&!state.slots.fitMode)a.push('A proporção é diferente. Escolha o enquadramento para evitar deformação.');if(q.level==='bad')a.push(`Resolução insuficiente. Upscale aproximado necessário: ${autoUpscaleFactor(state.imageInfo.width,state.imageInfo.height,c.geometry.trimWidthPx,c.geometry.trimHeightPx)}×.`);if(c.memory.mb>SOFT)a.push(`Raster pesado: ${c.memory.mb.toFixed(0)} MB estimados. Considere reduzir o PPI.`)}if(!a.length)a.push('Sem alertas críticos no momento.');a.forEach(t=>{const d=document.createElement('div');d.className='alert';d.textContent=t;els.alerts.appendChild(d)})}function preview(){if(!state.imageInfo){els.emptyPreview.hidden=false;els.canvas.width=1;els.canvas.height=1;return}const c=state.slots.width&&state.slots.material?config():null,r=c?c.geometry.totalWidthCm/c.geometry.totalHeightCm:state.imageInfo.width/state.imageInfo.height,w=r>=1?MAX_W:Math.round(MAX_H*r),h=r>=1?Math.round(w/r):MAX_H,cv=els.canvas;cv.width=w;cv.height=h;const ctx=cv.getContext('2d');ctx.clearRect(0,0,w,h);els.emptyPreview.hidden=true;if(!c){renderComposition(ctx,{image:state.imageInfo.img,width:w,height:h,mode:'fit',background:'white'});return}const mx=c.geometry.bleedCm/c.geometry.totalWidthCm*w,my=c.geometry.bleedCm/c.geometry.totalHeightCm*h,tr={x:mx,y:my,w:w-2*mx,h:h-2*my};renderComposition(ctx,{image:state.imageInfo.img,width:w,height:h,trimRect:tr,mode:state.slots.fitMode||'fill',zoom:+els.zoom.value/100,panX:state.panX,panY:state.panY,background:'white'});ctx.save();ctx.lineWidth=2;ctx.strokeStyle='#e11d48';ctx.strokeRect(1,1,w-2,h-2);ctx.strokeStyle='#111827';ctx.setLineDash([8,5]);ctx.strokeRect(tr.x,tr.y,tr.w,tr.h);ctx.restore()}function assistant(t){state.messages.push({role:'assistant',text:t});renderMessages()}function user(t){state.messages.push({role:'user',text:t});renderMessages()}function renderMessages(){els.chatLog.innerHTML='';for(const m of state.messages){const row=document.createElement('div');row.className=`message ${m.role}`;const av=document.createElement('div');av.className='avatar';av.textContent=m.role==='assistant'?'F':'Você';const b=document.createElement('div');b.className='bubble';b.innerHTML=esc(m.text).replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>').replace(/\n/g,'<br>');row.append(av,b);els.chatLog.appendChild(row)}els.chatLog.scrollTop=els.chatLog.scrollHeight}function quick(items){els.quickReplies.innerHTML='';items.forEach(t=>{const b=document.createElement('button');b.type='button';b.textContent=t;b.onclick=()=>message(t);els.quickReplies.appendChild(b)})}function fitLabel(m){return m==='fill'?'Preencher':m==='fit'?'Encaixar':m==='outpaint'?'Expandir com IA':'—'}function size(b){return b<1048576?(b/1024).toFixed(1)+' KB':(b/1048576).toFixed(2)+' MB'}function fmt(n){return Number(n).toFixed(2).replace(/\.00$/,'')}function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;')}window.onbeforeunload=()=>{if(state.lastDownloadUrl)URL.revokeObjectURL(state.lastDownloadUrl);if(state.objectUrl)URL.revokeObjectURL(state.objectUrl)};boot();
+const $ = (s) => document.querySelector(s);
+const els = {
+  dropzone: $('#dropzone'), fileInput: $('#fileInput'), fileCard: $('#fileCard'), filePreview: $('#filePreview'), fileName: $('#fileName'), fileMeta: $('#fileMeta'),
+  width: $('#width'), height: $('#height'), unit: $('#unit'), material: $('#material'), mode: $('#mode'), process: $('#process'), progress: $('#progress'),
+  largePreview: $('#largePreview'), emptyPreview: $('#emptyPreview'), backendState: $('#backendState'), engines: $('#engines'), resultPanel: $('#resultPanel'),
+  resultSummary: $('#resultSummary'), steps: $('#steps'), downloadPdf: $('#downloadPdf'), downloadImage: $('#downloadImage'), errorPanel: $('#errorPanel'),
+};
+
+const state = { file: null, objectUrl: null, backendOnline: false };
+const API = window.FECHAPRINT_API_URL || '';
+
+boot();
+
+async function boot() {
+  bind();
+  await checkBackend();
+}
+
+function bind() {
+  els.dropzone.addEventListener('click', () => els.fileInput.click());
+  els.dropzone.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); els.fileInput.click(); } });
+  els.fileInput.addEventListener('change', (e) => handleFile(e.target.files?.[0]));
+  els.dropzone.addEventListener('dragover', (e) => { e.preventDefault(); els.dropzone.classList.add('drag'); });
+  els.dropzone.addEventListener('dragleave', () => els.dropzone.classList.remove('drag'));
+  els.dropzone.addEventListener('drop', (e) => { e.preventDefault(); els.dropzone.classList.remove('drag'); handleFile(e.dataTransfer.files?.[0]); });
+  els.process.addEventListener('click', processJob);
+}
+
+async function checkBackend() {
+  try {
+    const response = await fetch(`${API}/api/capabilities`, { cache: 'no-store' });
+    if (!response.ok) throw new Error('backend offline');
+    const data = await response.json();
+    state.backendOnline = true;
+    els.backendState.dataset.state = 'online';
+    els.backendState.textContent = 'Backend open-source online';
+    renderEngines(data.engines || []);
+  } catch {
+    state.backendOnline = false;
+    els.backendState.dataset.state = 'offline';
+    els.backendState.textContent = 'Backend de IA não conectado';
+    els.engines.innerHTML = `<div class="engine unavailable"><span class="engine-dot"></span><div><strong>Servidor de processamento ausente</strong><span>O frontend está online, mas os modelos open-source precisam rodar no backend GPU.</span></div></div>`;
+  }
+  updateButton();
+}
+
+function renderEngines(engines) {
+  els.engines.innerHTML = engines.map((engine) => `
+    <div class="engine ${engine.available ? 'available' : 'unavailable'}">
+      <span class="engine-dot"></span>
+      <div><strong>${escapeHtml(engine.label)}</strong><span>${escapeHtml(engine.role)} · ${escapeHtml(engine.reason)}</span></div>
+      <code>${escapeHtml(engine.license)}</code>
+    </div>`).join('') || '<div class="engine">Nenhum motor reportado.</div>';
+}
+
+function handleFile(file) {
+  if (!file) return;
+  if (!['image/jpeg','image/png','image/webp'].includes(file.type)) return showError('Use JPG, PNG ou WEBP.');
+  state.file = file;
+  if (state.objectUrl) URL.revokeObjectURL(state.objectUrl);
+  state.objectUrl = URL.createObjectURL(file);
+  els.filePreview.src = state.objectUrl;
+  els.largePreview.src = state.objectUrl;
+  els.largePreview.hidden = false;
+  els.emptyPreview.hidden = true;
+  els.fileName.textContent = file.name;
+  els.fileMeta.textContent = `${formatBytes(file.size)} · ${file.type.replace('image/','').toUpperCase()}`;
+  els.fileCard.hidden = false;
+  els.resultPanel.hidden = true;
+  hideError();
+  updateButton();
+}
+
+function updateButton() {
+  els.process.disabled = !(state.file && state.backendOnline);
+}
+
+async function processJob() {
+  if (!state.file || !state.backendOnline) return;
+  hideError(); els.resultPanel.hidden = true; setLoading(true);
+  const form = new FormData();
+  form.append('file', state.file);
+  form.append('width', els.width.value);
+  form.append('height', els.height.value);
+  form.append('unit', els.unit.value);
+  form.append('material', els.material.value);
+  form.append('mode', els.mode.value);
+  try {
+    const response = await fetch(`${API}/api/process`, { method: 'POST', body: form });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.detail || `Falha no processamento (${response.status})`);
+    renderResult(data);
+  } catch (error) {
+    showError(error.message || 'Não foi possível processar a arte.');
+  } finally { setLoading(false); }
+}
+
+function renderResult(data) {
+  els.resultSummary.textContent = `${number(data.width_cm)} × ${number(data.height_cm)} cm · ${data.material} · ${data.target_ppi} PPI · sangria ${number(data.bleed_mm)} mm`;
+  els.steps.innerHTML = (data.steps || []).map((s) => `<div class="step ${escapeHtml(s.status)}"><strong>${escapeHtml(s.engine)}:</strong> ${escapeHtml(s.detail)}</div>`).join('');
+  els.downloadPdf.href = `${API}${data.pdf_url}`;
+  els.downloadImage.href = `${API}${data.image_url}`;
+  els.resultPanel.hidden = false;
+  els.largePreview.src = `${API}${data.image_url}?t=${Date.now()}`;
+  els.largePreview.hidden = false;
+  els.emptyPreview.hidden = true;
+}
+
+function setLoading(value) { els.process.disabled = value || !(state.file && state.backendOnline); els.progress.hidden = !value; }
+function showError(message) { els.errorPanel.textContent = message; els.errorPanel.hidden = false; }
+function hideError() { els.errorPanel.hidden = true; els.errorPanel.textContent = ''; }
+function formatBytes(bytes) { return bytes < 1024*1024 ? `${(bytes/1024).toFixed(1)} KB` : `${(bytes/1024/1024).toFixed(2)} MB`; }
+function number(v) { return new Intl.NumberFormat('pt-BR',{maximumFractionDigits:2}).format(Number(v||0)); }
+function escapeHtml(value) { return String(value ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }
+window.addEventListener('beforeunload', () => { if (state.objectUrl) URL.revokeObjectURL(state.objectUrl); });
