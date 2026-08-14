@@ -1,63 +1,61 @@
-# FechaPrint AI — pipeline open-source para impressão
+# FechaPrint v2 — Quality First
 
-O FechaPrint recebe JPG/PNG/WEBP, tamanho físico e material, executa automaticamente o melhor pipeline gratuito disponível e gera JPG final + PDF com tamanho físico correto.
+FechaPrint v2 recebe uma arte raster, analisa a resolução para o tamanho físico solicitado e só libera a produção quando consegue preservar qualidade.
 
-## Fluxo
+## Regra principal
 
-**upload → tamanho/material → processamento automático → PDF**
+**Sem Real-ESRGAN real, não existe falso upscale.** Se faltarem pixels, o job é bloqueado em vez de devolver um arquivo interpolado pior.
 
-## Motores integrados
+## Pipeline
 
-- **PaddleOCR** — registra e valida texto antes/depois (Apache-2.0).
-- **Real-ESRGAN** — upscale/restauração padrão (BSD-3-Clause).
-- **LaMa** — inpainting/outpainting conservador (Apache-2.0).
-- **PowerPaint** — outpainting avançado (MIT).
-- **SeedVR2** — restauração pesada (Apache-2.0).
-- **Qwen-Image-Edit-2511** — reformulação visual avançada (Apache-2.0).
-- **GFPGAN** — restauração facial opcional; fica desativado por padrão porque o projeto lista componentes de terceiros com licenças adicionais.
+1. análise de pixels, tamanho, PPI e proporção;
+2. Real-ESRGAN 2×/4× com tiles quando necessário;
+3. PaddleOCR opcional antes/depois para proteger texto;
+4. Quality Gate de nitidez, fidelidade e OCR;
+5. raster exato + sangria por extensão de borda;
+6. PDF físico com MediaBox/TrimBox/BleedBox.
 
-Os pesos/modelos não são redistribuídos aqui. Instale os projetos oficiais no servidor GPU e configure os comandos em `.env`.
-
-## Trava de texto
-
-PaddleOCR lê o original e a proposta gerativa. Se a similaridade cair abaixo de `FECHAPRINT_OCR_SIMILARITY` (0,84 por padrão), a edição é rejeitada e o pipeline volta para uma composição conservadora sem deformar a arte.
+Veja `V2-ARCHITECTURE.md` para detalhes.
 
 ## API
 
-- `GET /api/health`
-- `GET /api/capabilities`
-- `POST /api/process` (`file`, `width`, `height`, `unit`, `material`, `mode`)
-- `GET /api/files/{job_id}/final.jpg`
-- `GET /api/files/{job_id}/final.pdf`
+```text
+GET  /api/health
+GET  /api/capabilities
+POST /api/analyze
+POST /api/jobs
+GET  /api/jobs/{job_id}
+GET  /api/files/{job_id}/final.jpg
+GET  /api/files/{job_id}/final.pdf
+```
 
-## Rodar
+`POST /api/process` permanece como endpoint síncrono para testes/integrações.
+
+## Rodar a API base
 
 ```bash
-pip install -r requirements.txt
+python -m pip install -r requirements.txt
 uvicorn backend.app:app --host 0.0.0.0 --port 8080
 ```
 
-Abra `http://localhost:8080`.
-
-## Docker
-
-```bash
-docker build -t fechaprint .
-docker run --rm -p 8080:8080 -v fechaprint-data:/data fechaprint
-```
-
-O container base serve frontend + orquestrador. Os modelos GPU devem ser instalados/montados no servidor e configurados pelas variáveis de `.env.example`.
+O servidor base funciona sem GPU, mas bloqueia jobs que exigem ampliação até um provider Real-ESRGAN real ser configurado.
 
 ## Real-ESRGAN
 
-Se `realesrgan-ncnn-vulkan` estiver no `PATH`, o backend detecta automaticamente. Também é possível apontar o script oficial:
+A integração aceita uma destas opções:
 
-```env
-FECHAPRINT_REALESRGAN_CMD=python /models/Real-ESRGAN/inference_realesrgan.py -n RealESRGAN_x4plus -i {input} -o {output_dir} --outscale {scale} --tile 512
-```
+- `realesrgan-ncnn-vulkan` disponível no `PATH`;
+- `FECHAPRINT_REALESRGAN_SCRIPT=/caminho/Real-ESRGAN/inference_realesrgan.py`;
+- wrapper customizado em `FECHAPRINT_REALESRGAN_CMD`.
 
-## Testes locais
+O tile padrão é 256 e pode ser alterado por `FECHAPRINT_REALESRGAN_TILE`.
+
+## OCR
+
+PaddleOCR é opcional no primeiro boot. Se instalado, a v2 compara o texto detectado antes/depois da super-resolução e pode rejeitar uma saída que altere demais a arte.
+
+## Testes
 
 ```bash
-python -m unittest discover -s tests -v
+PYTHONPATH=. pytest -q tests/test_v2_analysis.py
 ```

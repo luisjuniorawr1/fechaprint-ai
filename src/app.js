@@ -1,115 +1,15 @@
-const $ = (s) => document.querySelector(s);
-const els = {
-  dropzone: $('#dropzone'), fileInput: $('#fileInput'), fileCard: $('#fileCard'), filePreview: $('#filePreview'), fileName: $('#fileName'), fileMeta: $('#fileMeta'),
-  width: $('#width'), height: $('#height'), unit: $('#unit'), material: $('#material'), mode: $('#mode'), process: $('#process'), progress: $('#progress'),
-  largePreview: $('#largePreview'), emptyPreview: $('#emptyPreview'), backendState: $('#backendState'), engines: $('#engines'), resultPanel: $('#resultPanel'),
-  resultSummary: $('#resultSummary'), steps: $('#steps'), downloadPdf: $('#downloadPdf'), downloadImage: $('#downloadImage'), errorPanel: $('#errorPanel'),
-};
-
-const state = { file: null, objectUrl: null, backendOnline: false };
-const API = window.FECHAPRINT_API_URL || '';
-
-boot();
-
-async function boot() {
-  bind();
-  await checkBackend();
-}
-
-function bind() {
-  els.dropzone.addEventListener('click', () => els.fileInput.click());
-  els.dropzone.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); els.fileInput.click(); } });
-  els.fileInput.addEventListener('change', (e) => handleFile(e.target.files?.[0]));
-  els.dropzone.addEventListener('dragover', (e) => { e.preventDefault(); els.dropzone.classList.add('drag'); });
-  els.dropzone.addEventListener('dragleave', () => els.dropzone.classList.remove('drag'));
-  els.dropzone.addEventListener('drop', (e) => { e.preventDefault(); els.dropzone.classList.remove('drag'); handleFile(e.dataTransfer.files?.[0]); });
-  els.process.addEventListener('click', processJob);
-}
-
-async function checkBackend() {
-  try {
-    const response = await fetch(`${API}/api/capabilities`, { cache: 'no-store' });
-    if (!response.ok) throw new Error('backend offline');
-    const data = await response.json();
-    state.backendOnline = true;
-    els.backendState.dataset.state = 'online';
-    els.backendState.textContent = 'Backend open-source online';
-    renderEngines(data.engines || []);
-  } catch {
-    state.backendOnline = false;
-    els.backendState.dataset.state = 'offline';
-    els.backendState.textContent = 'Backend de IA não conectado';
-    els.engines.innerHTML = `<div class="engine unavailable"><span class="engine-dot"></span><div><strong>Servidor de processamento ausente</strong><span>O frontend está online, mas os modelos open-source precisam rodar no backend GPU.</span></div></div>`;
-  }
-  updateButton();
-}
-
-function renderEngines(engines) {
-  els.engines.innerHTML = engines.map((engine) => `
-    <div class="engine ${engine.available ? 'available' : 'unavailable'}">
-      <span class="engine-dot"></span>
-      <div><strong>${escapeHtml(engine.label)}</strong><span>${escapeHtml(engine.role)} · ${escapeHtml(engine.reason)}</span></div>
-      <code>${escapeHtml(engine.license)}</code>
-    </div>`).join('') || '<div class="engine">Nenhum motor reportado.</div>';
-}
-
-function handleFile(file) {
-  if (!file) return;
-  if (!['image/jpeg','image/png','image/webp'].includes(file.type)) return showError('Use JPG, PNG ou WEBP.');
-  state.file = file;
-  if (state.objectUrl) URL.revokeObjectURL(state.objectUrl);
-  state.objectUrl = URL.createObjectURL(file);
-  els.filePreview.src = state.objectUrl;
-  els.largePreview.src = state.objectUrl;
-  els.largePreview.hidden = false;
-  els.emptyPreview.hidden = true;
-  els.fileName.textContent = file.name;
-  els.fileMeta.textContent = `${formatBytes(file.size)} · ${file.type.replace('image/','').toUpperCase()}`;
-  els.fileCard.hidden = false;
-  els.resultPanel.hidden = true;
-  hideError();
-  updateButton();
-}
-
-function updateButton() {
-  els.process.disabled = !(state.file && state.backendOnline);
-}
-
-async function processJob() {
-  if (!state.file || !state.backendOnline) return;
-  hideError(); els.resultPanel.hidden = true; setLoading(true);
-  const form = new FormData();
-  form.append('file', state.file);
-  form.append('width', els.width.value);
-  form.append('height', els.height.value);
-  form.append('unit', els.unit.value);
-  form.append('material', els.material.value);
-  form.append('mode', els.mode.value);
-  try {
-    const response = await fetch(`${API}/api/process`, { method: 'POST', body: form });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data.detail || `Falha no processamento (${response.status})`);
-    renderResult(data);
-  } catch (error) {
-    showError(error.message || 'Não foi possível processar a arte.');
-  } finally { setLoading(false); }
-}
-
-function renderResult(data) {
-  els.resultSummary.textContent = `${number(data.width_cm)} × ${number(data.height_cm)} cm · ${data.material} · ${data.target_ppi} PPI · sangria ${number(data.bleed_mm)} mm`;
-  els.steps.innerHTML = (data.steps || []).map((s) => `<div class="step ${escapeHtml(s.status)}"><strong>${escapeHtml(s.engine)}:</strong> ${escapeHtml(s.detail)}</div>`).join('');
-  els.downloadPdf.href = `${API}${data.pdf_url}`;
-  els.downloadImage.href = `${API}${data.image_url}`;
-  els.resultPanel.hidden = false;
-  els.largePreview.src = `${API}${data.image_url}?t=${Date.now()}`;
-  els.largePreview.hidden = false;
-  els.emptyPreview.hidden = true;
-}
-
-function setLoading(value) { els.process.disabled = value || !(state.file && state.backendOnline); els.progress.hidden = !value; }
-function showError(message) { els.errorPanel.textContent = message; els.errorPanel.hidden = false; }
-function hideError() { els.errorPanel.hidden = true; els.errorPanel.textContent = ''; }
-function formatBytes(bytes) { return bytes < 1024*1024 ? `${(bytes/1024).toFixed(1)} KB` : `${(bytes/1024/1024).toFixed(2)} MB`; }
-function number(v) { return new Intl.NumberFormat('pt-BR',{maximumFractionDigits:2}).format(Number(v||0)); }
-function escapeHtml(value) { return String(value ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }
-window.addEventListener('beforeunload', () => { if (state.objectUrl) URL.revokeObjectURL(state.objectUrl); });
+const $=(s)=>document.querySelector(s);const els={dropzone:$('#dropzone'),fileInput:$('#fileInput'),fileCard:$('#fileCard'),filePreview:$('#filePreview'),fileName:$('#fileName'),fileMeta:$('#fileMeta'),width:$('#width'),height:$('#height'),unit:$('#unit'),material:$('#material'),process:$('#process'),progress:$('#progress'),progressBar:$('#progressBar'),progressText:$('#progressText'),largePreview:$('#largePreview'),emptyPreview:$('#emptyPreview'),backendState:$('#backendState'),engines:$('#engines'),resultPanel:$('#resultPanel'),resultSummary:$('#resultSummary'),steps:$('#steps'),downloadPdf:$('#downloadPdf'),downloadImage:$('#downloadImage'),errorPanel:$('#errorPanel'),analysisCard:$('#analysisCard'),analysisState:$('#analysisState'),sourcePx:$('#sourcePx'),effectivePpi:$('#effectivePpi'),targetPx:$('#targetPx'),upscaleNeed:$('#upscaleNeed'),cropNeed:$('#cropNeed'),targetPpi:$('#targetPpi'),analysisMessage:$('#analysisMessage')};
+const params=new URLSearchParams(location.search);if(params.get('api'))localStorage.setItem('fechaprint_api_url',params.get('api'));const API=(window.FECHAPRINT_API_URL||localStorage.getItem('fechaprint_api_url')||'').replace(/\/$/,'');const state={file:null,objectUrl:null,backendOnline:false,analysis:null,analyzing:false,analyzeTimer:null,currentJob:null};boot();
+async function boot(){bind();await checkBackend()}function bind(){els.dropzone.addEventListener('click',()=>els.fileInput.click());els.dropzone.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();els.fileInput.click()}});els.fileInput.addEventListener('change',e=>handleFile(e.target.files?.[0]));els.dropzone.addEventListener('dragover',e=>{e.preventDefault();els.dropzone.classList.add('drag')});els.dropzone.addEventListener('dragleave',()=>els.dropzone.classList.remove('drag'));els.dropzone.addEventListener('drop',e=>{e.preventDefault();els.dropzone.classList.remove('drag');handleFile(e.dataTransfer.files?.[0])});[els.width,els.height,els.unit,els.material].forEach(el=>el.addEventListener('change',queueAnalyze));[els.width,els.height].forEach(el=>el.addEventListener('input',queueAnalyze));els.process.addEventListener('click',createJob)}
+async function checkBackend(){try{const response=await fetchWithTimeout(`${API}/api/capabilities`,{cache:'no-store'},6000);if(!response.ok)throw new Error('offline');const data=await response.json();state.backendOnline=true;els.backendState.dataset.state='online';els.backendState.textContent=`Motor v${data.version||'2'} conectado`;renderEngines(data.engines||[])}catch{state.backendOnline=false;els.backendState.dataset.state='offline';els.backendState.textContent='Servidor v2 não conectado';els.engines.innerHTML='<div class="engine unavailable"><span class="engine-dot"></span><div><strong>Produção bloqueada</strong><span>A v2 não usa mais upscale falso no navegador. Conecte o backend com Real-ESRGAN para processar artes que precisem de ampliação.</span></div><code>Quality First</code></div>'}updateButton()}
+function renderEngines(engines){els.engines.innerHTML=engines.map(e=>`<div class="engine ${e.available?'available':'unavailable'}"><span class="engine-dot"></span><div><strong>${escapeHtml(e.label)}</strong><span>${escapeHtml(e.role)} · ${escapeHtml(e.reason)}</span></div><code>${escapeHtml(e.license)}</code></div>`).join('')}
+function handleFile(file){if(!file)return;if(!['image/jpeg','image/png','image/webp'].includes(file.type))return showError('Use JPG, PNG ou WEBP.');state.file=file;state.analysis=null;state.currentJob=null;if(state.objectUrl)URL.revokeObjectURL(state.objectUrl);state.objectUrl=URL.createObjectURL(file);els.filePreview.src=state.objectUrl;els.largePreview.src=state.objectUrl;els.largePreview.hidden=false;els.emptyPreview.hidden=true;els.fileName.textContent=file.name;els.fileMeta.textContent=`${formatBytes(file.size)} · ${file.type.replace('image/','').toUpperCase()}`;els.fileCard.hidden=false;els.resultPanel.hidden=true;els.analysisCard.hidden=true;hideError();queueAnalyze()}
+function queueAnalyze(){clearTimeout(state.analyzeTimer);state.analysis=null;updateButton();if(!state.file||!state.backendOnline)return;state.analyzeTimer=setTimeout(analyze,350)}
+async function analyze(){if(!state.file||!state.backendOnline||state.analyzing)return;state.analyzing=true;hideError();try{const response=await fetch(`${API}/api/analyze`,{method:'POST',body:buildForm()});const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(readError(data)||`Falha na análise (${response.status})`);state.analysis=data;renderAnalysis(data)}catch(error){state.analysis=null;showError(error.message||'Não foi possível analisar a arte.')}finally{state.analyzing=false;updateButton()}}
+function renderAnalysis(d){els.analysisCard.hidden=false;els.sourcePx.textContent=`${d.source_width_px} × ${d.source_height_px} px`;els.effectivePpi.textContent=`${number(d.source_effective_ppi,1)} PPI`;els.targetPx.textContent=`${d.target_width_px} × ${d.target_height_px} px`;els.upscaleNeed.textContent=d.upscale_factor===1?'Não precisa':d.upscale_factor?`Real-ESRGAN ${d.upscale_factor}×`:'Acima de 4× — bloqueado';els.cropNeed.textContent=`${number((d.crop_fraction||0)*100,1)}%`;els.targetPpi.textContent=`${d.target_ppi} PPI`;const ready=Boolean(d.production_ready);els.analysisState.textContent=ready?'Pronto para processar':'Bloqueado';els.analysisState.dataset.state=ready?'good':'bad';els.analysisMessage.className=`analysis-message ${ready?'good':'bad'}`;els.analysisMessage.textContent=ready?(d.upscale_factor>1?`A arte precisa de super-resolução real ${d.upscale_factor}×. A saída só será liberada se passar no quality gate.`:'A arte já possui pixels suficientes para o tamanho solicitado.'):(d.block_reason||'A produção não pode continuar com segurança.');updateButton()}
+function updateButton(){els.process.disabled=!(state.file&&state.backendOnline&&state.analysis?.production_ready)||Boolean(state.currentJob)}
+async function createJob(){if(els.process.disabled)return;hideError();els.resultPanel.hidden=true;state.currentJob='starting';setProgress(1,'Enviando arte para o motor v2…');updateButton();try{const response=await fetch(`${API}/api/jobs`,{method:'POST',body:buildForm()});const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(readError(data)||`Falha ao criar job (${response.status})`);state.currentJob=data.job_id;await pollJob(data.job_id)}catch(error){showError(error.message||'Não foi possível iniciar o processamento.')}finally{state.currentJob=null;setProgress(null);updateButton()}}
+async function pollJob(jobId){for(;;){const response=await fetch(`${API}/api/jobs/${encodeURIComponent(jobId)}`,{cache:'no-store'});const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(readError(data)||'Não foi possível consultar o processamento.');setProgress(data.progress||0,data.message||'Processando…');if(data.status==='completed'){renderResult(data.result);return}if(data.status==='blocked'||data.status==='failed')throw new Error(formatJobError(data.error)||data.message||'Processamento bloqueado.');await sleep(900)}}
+function renderResult(data){const p=data.plan||{};els.resultSummary.textContent=`${number(p.width_cm)} × ${number(p.height_cm)} cm · ${p.material_label||''} · ${p.target_ppi||''} PPI`;els.steps.innerHTML=(data.steps||[]).map(s=>`<div class="step ${escapeHtml(s.status)}"><strong>${escapeHtml(s.engine)}:</strong> ${escapeHtml(s.detail)}</div>`).join('');els.downloadPdf.href=absoluteApi(data.pdf_url);els.downloadImage.href=absoluteApi(data.image_url);els.resultPanel.hidden=false}
+function buildForm(){const form=new FormData();form.append('file',state.file);form.append('width',els.width.value);form.append('height',els.height.value);form.append('unit',els.unit.value);form.append('material',els.material.value);return form}function formatJobError(error){if(!error)return'';let message=error.message||'';if(error.code==='source_too_small'&&error.max_width_cm_at_4x&&error.max_height_cm_at_4x)message+=` Máximo técnico aproximado com 4×: ${number(error.max_width_cm_at_4x,1)} × ${number(error.max_height_cm_at_4x,1)} cm.`;if(error.code==='quality_gate_failed'&&error.quality?.reasons?.length)message+=` Motivos: ${error.quality.reasons.join('; ')}.`;return message}
+function setProgress(percent,text=''){if(percent==null){els.progress.hidden=true;els.progressBar.style.width='0%';return}els.progress.hidden=false;els.progressBar.style.width=`${Math.max(1,Math.min(100,percent))}%`;els.progressText.textContent=text}function absoluteApi(path){return/^https?:/i.test(path||'')?path:`${API}${path||''}`}function readError(data){return typeof data?.detail==='string'?data.detail:data?.detail?.message||data?.message||''}function showError(message){els.errorPanel.textContent=message;els.errorPanel.hidden=false}function hideError(){els.errorPanel.hidden=true;els.errorPanel.textContent=''}function sleep(ms){return new Promise(r=>setTimeout(r,ms))}function formatBytes(bytes){return bytes<1024*1024?`${(bytes/1024).toFixed(1)} KB`:`${(bytes/1024/1024).toFixed(2)} MB`}function number(v,digits=2){return new Intl.NumberFormat('pt-BR',{maximumFractionDigits:digits}).format(Number(v||0))}function escapeHtml(value){return String(value??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))}async function fetchWithTimeout(url,options,timeout){const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),timeout);try{return await fetch(url,{...options,signal:controller.signal})}finally{clearTimeout(timer)}}window.addEventListener('beforeunload',()=>{if(state.objectUrl)URL.revokeObjectURL(state.objectUrl)});
