@@ -3,37 +3,76 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="theme-color" content="#f6f7fb" />
-  <title>FechaPrint AI — assistente conversacional de impressão</title>
-  <meta name="description" content="Envie uma imagem, converse com o assistente e receba um PDF pronto para impressão." />
+  <title>FechaPrint AI — arte pronta para impressão</title>
+  <meta name="description" content="Envie a arte, informe o tamanho e receba o PDF pronto para impressão usando um pipeline open-source." />
   <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
   <header class="topbar">
-    <div class="brand"><div class="brand-mark">F</div><div class="brand-copy"><strong>FechaPrint AI</strong><span>Assistente conversacional para fechamento de arquivo</span></div></div>
-    <div class="topbar-meta"><span class="privacy-pill">Processamento local · nada é enviado</span><span class="privacy-pill subtle">PDF de produção real</span></div>
+    <div class="brand"><div class="brand-mark">F</div><div><strong>FechaPrint AI</strong><span>Pipeline open-source para impressão</span></div></div>
+    <div id="backendState" class="status-pill" data-state="checking">Verificando motores…</div>
   </header>
+
   <main class="layout">
-    <section class="chat-panel panel">
-      <div class="hero"><div class="hero-copy"><div class="eyebrow">Upload + conversa + PDF</div><h1>Envie sua arte e diga como quer imprimir.</h1><p>O FechaPrint faz as perguntas certas, usa os presets técnicos que já conhece e só pede o que estiver faltando.</p></div><div id="dropzone" class="dropzone" role="button" tabindex="0" aria-label="Enviar imagem"><input id="fileInput" type="file" accept="image/jpeg,image/png,image/webp" hidden /><div class="upload-icon">↥</div><strong>Arraste sua imagem aqui</strong><span>ou <u>Selecionar imagem</u></span><small>JPG, JPEG, PNG ou WEBP</small></div></div>
-      <div id="fileCard" class="file-card" hidden><img id="filePreview" alt="Preview da imagem enviada" /><div class="file-info"><strong id="fileName"></strong><span id="fileMeta"></span></div></div>
-      <div id="chatLog" class="chat-log" aria-live="polite"></div><div id="quickReplies" class="quick-replies"></div>
-      <form id="chatForm" class="chat-composer"><textarea id="chatInput" rows="1" placeholder="Ex.: Quero isso em lona 250 x 75 cm com 5 mm de sangria"></textarea><button id="sendMessage" type="submit" class="primary-button">Enviar</button></form>
+    <section class="panel main-panel">
+      <div class="eyebrow">Fluxo direto</div>
+      <h1>Envie a arte. Informe o tamanho. Baixe o PDF.</h1>
+      <p class="lead">O FechaPrint escolhe automaticamente restauração, upscale e adaptação de proporção conforme os motores gratuitos disponíveis no servidor.</p>
+
+      <div id="dropzone" class="dropzone" tabindex="0" role="button">
+        <input id="fileInput" type="file" accept="image/jpeg,image/png,image/webp" hidden />
+        <div class="upload-icon">↥</div>
+        <strong>Arraste JPG, PNG ou WEBP</strong>
+        <span>ou clique para selecionar</span>
+      </div>
+
+      <div id="fileCard" class="file-card" hidden>
+        <img id="filePreview" alt="Arte enviada" />
+        <div><strong id="fileName">—</strong><span id="fileMeta">—</span></div>
+      </div>
+
+      <div class="form-grid">
+        <label><span>Largura</span><input id="width" type="number" min="1" step="0.1" value="500" /></label>
+        <label><span>Altura</span><input id="height" type="number" min="1" step="0.1" value="200" /></label>
+        <label><span>Unidade</span><select id="unit"><option value="cm">cm</option><option value="m">m</option><option value="mm">mm</option></select></label>
+        <label><span>Material</span><select id="material"><option value="canvas">Lona</option><option value="banner">Banner</option><option value="panel">Painel</option><option value="outdoor">Outdoor</option><option value="sticker">Adesivo</option><option value="paper">Papel / flyer</option></select></label>
+      </div>
+
+      <details class="advanced">
+        <summary>Modo de adaptação</summary>
+        <select id="mode"><option value="auto">Automático</option><option value="relayout">Priorizar reformulação avançada</option><option value="safe">Priorizar preservação máxima</option></select>
+        <p>Automático usa reformulação apenas quando a proporção muda bastante e existe um motor compatível.</p>
+      </details>
+
+      <button id="process" class="primary" type="button" disabled>Processar e gerar PDF</button>
+      <div id="progress" class="progress" hidden><div class="spinner"></div><span>Processando…</span></div>
     </section>
-    <aside class="side-panel">
-      <section class="panel preview-panel"><div class="panel-head"><div><div class="eyebrow">Preview</div><h2>Arquivo de produção</h2></div><div class="format-badges"><span id="orientation">—</span><span id="ratio">—</span></div></div><div class="preview-wrap"><canvas id="previewCanvas"></canvas><div id="emptyPreview" class="empty-preview"><div>Envie uma imagem para começar.</div><small>Quando o enquadramento estiver definido, você verá corte, sangria e preview do fechamento.</small></div></div><div class="preview-controls"><label>Zoom <input id="zoom" type="range" min="100" max="300" value="100" step="1" /></label><span id="zoomValue">100%</span><button id="resetPosition" class="text-button" type="button">Centralizar</button></div></section>
-      <section class="panel status-panel">
-        <div class="panel-head compact"><div><div class="eyebrow">Ficha técnica</div><h2>O que já foi entendido</h2></div></div>
-        <div class="slot-grid"><div><span>Imagem</span><strong id="slotImage">—</strong></div><div><span>Tamanho</span><strong id="slotSize">—</strong></div><div><span>Material</span><strong id="slotMaterial">—</strong></div><div><span>Resolução alvo</span><strong id="slotPpi">—</strong></div><div><span>Sangria</span><strong id="slotBleed">—</strong></div><div><span>Enquadramento</span><strong id="slotFit">—</strong></div><div><span>Cor</span><strong id="slotColor">RGB / DeviceRGB</strong></div><div><span>Status</span><strong id="slotReady">Aguardando</strong></div></div>
-        <div class="metrics"><div><span>Arquivo original</span><strong id="originalPx">—</strong></div><div><span>Necessário para impressão</span><strong id="requiredPx">—</strong></div><div><span>Resolução efetiva</span><strong id="effectivePpi">—</strong></div><div><span>Qualidade estimada</span><strong id="qualityText">—</strong></div></div>
-        <div id="qualityCard" class="quality-card" data-level="neutral"><span class="quality-dot"></span><div><strong id="qualityLabel">Aguardando</strong><span id="qualityDescription">Envie a imagem e conte como ela será impressa.</span></div></div>
-        <div><div class="section-title">Alertas</div><div id="alerts" class="alerts"></div></div>
-        <div><div class="section-title">Saída</div><dl class="summary-list"><div><dt>Tamanho final</dt><dd id="finalSize">—</dd></div><div><dt>Com sangria</dt><dd id="bleedSize">—</dd></div><div><dt>Memória raster</dt><dd id="memoryOut">—</dd></div><div><dt>Arquivo</dt><dd id="fileSummary">PDF de produção</dd></div></dl></div>
-        <div class="capability-block"><div><strong id="aiStatus">IA indisponível no momento</strong><span>Outpainting e upscale só são habilitados com provider real.</span></div><div><strong id="cmykStatus">CMYK/ICC indisponível neste runtime</strong><span>A saída permanece em RGB de forma honesta.</span></div></div>
-        <button id="generate" class="primary-button" type="button" disabled>Gerar / regerar PDF</button><div id="progress" class="progress" hidden></div><div id="result" class="result" hidden><div class="ready">✓ Arquivo pronto</div><div id="resultMeta" class="result-meta"></div><a id="download" class="download-button" href="#">Baixar PDF</a></div>
+
+    <aside class="sidebar">
+      <section class="panel preview-panel">
+        <div class="panel-title"><div><div class="eyebrow">Preview</div><h2>Arte enviada</h2></div></div>
+        <div class="preview-box"><img id="largePreview" alt="Preview" hidden /><div id="emptyPreview">Envie uma arte para começar.</div></div>
       </section>
+
+      <section class="panel engines-panel">
+        <div class="panel-title"><div><div class="eyebrow">Motores</div><h2>Pipeline disponível</h2></div></div>
+        <div id="engines" class="engine-list"><div class="engine skeleton">Consultando backend…</div></div>
+      </section>
+
+      <section id="resultPanel" class="panel result-panel" hidden>
+        <div class="success">✓ Arquivo pronto</div>
+        <div id="resultSummary" class="result-summary"></div>
+        <div id="steps" class="steps"></div>
+        <div class="download-grid">
+          <a id="downloadPdf" class="primary link-button" href="#">Baixar PDF</a>
+          <a id="downloadImage" class="secondary link-button" href="#">Baixar JPG final</a>
+        </div>
+      </section>
+
+      <section id="errorPanel" class="panel error-panel" hidden></section>
     </aside>
   </main>
+
   <script type="module" src="./src/app.js"></script>
 </body>
 </html>
